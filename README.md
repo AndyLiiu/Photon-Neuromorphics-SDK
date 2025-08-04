@@ -367,9 +367,9 @@ counts = quantum_layer.measure(shots=1000)
 ```bibtex
 @software{photon_neuromorphics2025,
   title={Photon-Neuromorphics-SDK: Silicon Photonic Neural Networks with WASM Acceleration},
-  author={Your Name},
+  author={Daniel Schmidt},
   year={2025},
-  url={https://github.com/yourusername/Photon-Neuromorphics-SDK}
+  url={https://github.com/danieleschmidt/Photon-Neuromorphics-SDK}
 }
 
 @article{shen2017deep,

@@ -173,6 +173,11 @@ class FDTDSolver:
         self.mu = np.ones(grid_size)       # Relative permeability
         self.sigma = np.zeros(grid_size)   # Conductivity
         
+        # Boundary conditions
+        self.boundary_type = "pml"  # Perfectly Matched Layer
+        self.pml_thickness = 10     # PML layer thickness
+        self._setup_pml()
+        
     def set_material(self, region: Tuple[slice, slice, slice], 
                     epsilon_r: float, mu_r: float = 1.0, sigma: float = 0.0):
         """Set material properties in a region."""
@@ -207,6 +212,9 @@ class FDTDSolver:
         # Update H field (curl of E)
         self._update_H_field()
         
+        # Apply boundary conditions to H field
+        self._apply_boundary_conditions()
+        
         # Update E field (curl of H)
         self._update_E_field()
         
@@ -214,24 +222,52 @@ class FDTDSolver:
         if hasattr(self, 'source_pos'):
             self._add_source(time_step)
             
+        # Apply boundary conditions to E field
+        self._apply_boundary_conditions()
+            
     def _update_H_field(self):
-        """Update magnetic field components."""
-        # Simplified 3D update (would need proper indexing for real implementation)
-        c = 3e8
-        dt_over_mu = self.dt / (4e-7 * np.pi)  # μ₀
+        """Update magnetic field components using proper FDTD equations."""
+        mu_0 = 4e-7 * np.pi
+        dt_over_mu = self.dt / mu_0
         
-        # ∂Hz/∂t = (1/μ)[∂Ey/∂x - ∂Ex/∂y]
+        # Update Hx: ∂Hx/∂t = (1/μ)[∂Ey/∂z - ∂Ez/∂y]
+        self.Hx[:, :-1, :-1] += dt_over_mu * (
+            (self.Ey[:, :-1, 1:] - self.Ey[:, :-1, :-1]) / self.cell_size -
+            (self.Ez[:, 1:, :-1] - self.Ez[:, :-1, :-1]) / self.cell_size
+        ) / self.mu[:, :-1, :-1]
+        
+        # Update Hy: ∂Hy/∂t = (1/μ)[∂Ez/∂x - ∂Ex/∂z]
+        self.Hy[:-1, :, :-1] += dt_over_mu * (
+            (self.Ez[1:, :, :-1] - self.Ez[:-1, :, :-1]) / self.cell_size -
+            (self.Ex[:-1, :, 1:] - self.Ex[:-1, :, :-1]) / self.cell_size
+        ) / self.mu[:-1, :, :-1]
+        
+        # Update Hz: ∂Hz/∂t = (1/μ)[∂Ex/∂y - ∂Ey/∂x]
         self.Hz[:-1, :-1, :] += dt_over_mu * (
-            (self.Ey[1:, :-1, :] - self.Ey[:-1, :-1, :]) / self.cell_size -
-            (self.Ex[:-1, 1:, :] - self.Ex[:-1, :-1, :]) / self.cell_size
-        )
+            (self.Ex[:-1, 1:, :] - self.Ex[:-1, :-1, :]) / self.cell_size -
+            (self.Ey[1:, :-1, :] - self.Ey[:-1, :-1, :]) / self.cell_size
+        ) / self.mu[:-1, :-1, :]
         
     def _update_E_field(self):
-        """Update electric field components."""
+        """Update electric field components using proper FDTD equations."""
         epsilon_0 = 8.854e-12
         dt_over_epsilon = self.dt / epsilon_0
         
-        # ∂Ez/∂t = (1/ε)[∂Hy/∂x - ∂Hx/∂y] - σ*Ez/ε
+        # Update Ex: ∂Ex/∂t = (1/ε)[∂Hz/∂y - ∂Hy/∂z] - σ*Ex/ε
+        self.Ex[1:-1, :, 1:-1] += dt_over_epsilon * (
+            (self.Hz[1:-1, 1:, 1:-1] - self.Hz[1:-1, :-1, 1:-1]) / self.cell_size -
+            (self.Hy[1:-1, :, 1:-1] - self.Hy[1:-1, :, :-2]) / self.cell_size
+        ) / self.epsilon[1:-1, :, 1:-1] - \
+        self.sigma[1:-1, :, 1:-1] * self.Ex[1:-1, :, 1:-1] * dt_over_epsilon / self.epsilon[1:-1, :, 1:-1]
+        
+        # Update Ey: ∂Ey/∂t = (1/ε)[∂Hx/∂z - ∂Hz/∂x] - σ*Ey/ε
+        self.Ey[:, 1:-1, 1:-1] += dt_over_epsilon * (
+            (self.Hx[:, 1:-1, 1:-1] - self.Hx[:, 1:-1, :-2]) / self.cell_size -
+            (self.Hz[1:, 1:-1, 1:-1] - self.Hz[:-1, 1:-1, 1:-1]) / self.cell_size
+        ) / self.epsilon[:, 1:-1, 1:-1] - \
+        self.sigma[:, 1:-1, 1:-1] * self.Ey[:, 1:-1, 1:-1] * dt_over_epsilon / self.epsilon[:, 1:-1, 1:-1]
+        
+        # Update Ez: ∂Ez/∂t = (1/ε)[∂Hy/∂x - ∂Hx/∂y] - σ*Ez/ε
         self.Ez[1:-1, 1:-1, :] += dt_over_epsilon * (
             (self.Hy[1:-1, 1:-1, :] - self.Hy[:-2, 1:-1, :]) / self.cell_size -
             (self.Hx[1:-1, 1:-1, :] - self.Hx[1:-1, :-2, :]) / self.cell_size
@@ -290,3 +326,77 @@ class FDTDSolver:
                 transmissions.append(0.0)
                 
         return transmissions
+        
+    def _setup_pml(self):
+        """Setup Perfectly Matched Layer boundary conditions."""
+        # PML absorption coefficient
+        sigma_max = 0.8 * 3 / (self.cell_size * np.sqrt(1.0))  # Optimal PML conductivity
+        
+        # Create PML conductivity profiles
+        self.sigma_pml_x = np.zeros(self.grid_size)
+        self.sigma_pml_y = np.zeros(self.grid_size)
+        self.sigma_pml_z = np.zeros(self.grid_size)
+        
+        # Apply PML to boundaries
+        for i in range(self.pml_thickness):
+            # Left and right boundaries (x-direction)
+            sigma_val = sigma_max * ((self.pml_thickness - i) / self.pml_thickness) ** 3
+            self.sigma_pml_x[i, :, :] = sigma_val
+            self.sigma_pml_x[-1-i, :, :] = sigma_val
+            
+            # Front and back boundaries (y-direction)  
+            self.sigma_pml_y[:, i, :] = sigma_val
+            self.sigma_pml_y[:, -1-i, :] = sigma_val
+            
+            # Top and bottom boundaries (z-direction)
+            self.sigma_pml_z[:, :, i] = sigma_val
+            self.sigma_pml_z[:, :, -1-i] = sigma_val
+            
+    def _apply_boundary_conditions(self):
+        """Apply boundary conditions to electromagnetic fields."""
+        if self.boundary_type == "pml":
+            # Apply PML absorption to fields
+            self._apply_pml_absorption()
+        elif self.boundary_type == "periodic":
+            # Periodic boundary conditions
+            self.Ex[0, :, :] = self.Ex[-1, :, :]
+            self.Ey[:, 0, :] = self.Ey[:, -1, :]
+            self.Ez[:, :, 0] = self.Ez[:, :, -1]
+        elif self.boundary_type == "absorbing":
+            # Simple absorbing boundaries (Mur condition)
+            self._apply_mur_boundary()
+        else:
+            # Default: zero boundaries
+            self.Ex[0, :, :] = 0; self.Ex[-1, :, :] = 0
+            self.Ey[:, 0, :] = 0; self.Ey[:, -1, :] = 0
+            self.Ez[:, :, 0] = 0; self.Ez[:, :, -1] = 0
+            
+    def _apply_pml_absorption(self):
+        """Apply PML absorption to fields."""
+        # Apply exponential decay based on PML conductivity
+        decay_factor_x = np.exp(-self.sigma_pml_x * self.dt / (8.854e-12))
+        decay_factor_y = np.exp(-self.sigma_pml_y * self.dt / (8.854e-12))
+        decay_factor_z = np.exp(-self.sigma_pml_z * self.dt / (8.854e-12))
+        
+        # Apply to E fields
+        self.Ex *= decay_factor_x
+        self.Ey *= decay_factor_y
+        self.Ez *= decay_factor_z
+        
+        # Apply to H fields with same factors
+        self.Hx *= decay_factor_x
+        self.Hy *= decay_factor_y
+        self.Hz *= decay_factor_z
+        
+    def _apply_mur_boundary(self):
+        """Apply Mur absorbing boundary condition (first-order)."""
+        c = 3e8
+        mur_coeff = (c * self.dt - self.cell_size) / (c * self.dt + self.cell_size)
+        
+        # Simple Mur condition for Ez field at x boundaries
+        self.Ez[0, 1:-1, 1:-1] = self.Ez[1, 1:-1, 1:-1] + mur_coeff * (
+            self.Ez[0, 1:-1, 1:-1] - self.Ez[1, 1:-1, 1:-1]
+        )
+        self.Ez[-1, 1:-1, 1:-1] = self.Ez[-2, 1:-1, 1:-1] + mur_coeff * (
+            self.Ez[-1, 1:-1, 1:-1] - self.Ez[-2, 1:-1, 1:-1]
+        )

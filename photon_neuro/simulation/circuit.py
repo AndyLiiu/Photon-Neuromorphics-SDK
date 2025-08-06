@@ -85,14 +85,15 @@ class CircuitLevelSimulator:
         
     def _calculate_transfer_function(self, input_comp: str, input_port: int,
                                    output_comp: str, output_port: int, freq_idx: int) -> complex:
-        """Calculate transfer function using graph traversal."""
+        """Calculate transfer function using proper S-parameter matrix operations."""
         try:
             # Find path from input to output
             if input_comp == output_comp:
                 # Same component - use S-parameter directly
                 if input_comp in self.s_parameters:
                     s_matrix = self.s_parameters[input_comp][freq_idx]
-                    if input_port < s_matrix.shape[0] and output_port < s_matrix.shape[1]:
+                    if (input_port < s_matrix.shape[1] and 
+                        output_port < s_matrix.shape[0]):
                         return s_matrix[output_port, input_port]
                 return 1.0 if input_port == output_port else 0.0
                 
@@ -100,42 +101,79 @@ class CircuitLevelSimulator:
             if nx.has_path(self.graph, input_comp, output_comp):
                 path = nx.shortest_path(self.graph, input_comp, output_comp)
                 
-                # Calculate transfer function along path
-                h_total = 1.0 + 0j
-                
-                for i in range(len(path) - 1):
-                    comp1, comp2 = path[i], path[i+1]
-                    edge_data = self.graph[comp1][comp2]
-                    
-                    # Waveguide transfer function
-                    loss = edge_data.get('loss', 1.0)
-                    phase = edge_data.get('phase', 0.0)
-                    h_waveguide = loss * np.exp(1j * phase)
-                    
-                    # Component S-parameters
-                    if comp1 in self.s_parameters:
-                        s1 = self.s_parameters[comp1][freq_idx]
-                        # Simplified: assume output port 1, input port 0
-                        h_comp1 = s1[1, 0] if s1.shape[0] > 1 else s1[0, 0]
-                    else:
-                        h_comp1 = 1.0
-                        
-                    h_total *= h_comp1 * h_waveguide
-                    
-                # Final component
-                final_comp = path[-1]
-                if final_comp in self.s_parameters:
-                    s_final = self.s_parameters[final_comp][freq_idx]
-                    h_final = s_final[output_port, 0] if s_final.shape[0] > output_port else 1.0
-                    h_total *= h_final
-                    
-                return h_total
+                # Build cascaded S-parameter matrix
+                return self._cascade_s_parameters(path, input_port, output_port, freq_idx)
             else:
                 return 0.0
                 
         except Exception as e:
             print(f"Warning: Transfer function calculation failed: {e}")
             return 0.0
+            
+    def _cascade_s_parameters(self, path: list, input_port: int, output_port: int, freq_idx: int) -> complex:
+        """Cascade S-parameters along a path using proper matrix operations."""
+        if len(path) < 2:
+            return 1.0
+            
+        # Start with first component
+        if path[0] in self.s_parameters:
+            s_total = self.s_parameters[path[0]][freq_idx].copy()
+        else:
+            s_total = np.eye(2, dtype=complex)
+            
+        # Cascade through path
+        for i in range(len(path) - 1):
+            comp1, comp2 = path[i], path[i+1]
+            edge_data = self.graph[comp1][comp2] if self.graph.has_edge(comp1, comp2) else {}
+            
+            # Get waveguide S-parameters between components
+            s_waveguide = self._get_waveguide_s_params(edge_data, freq_idx)
+            
+            # Get next component S-parameters
+            if comp2 in self.s_parameters:
+                s_comp2 = self.s_parameters[comp2][freq_idx]
+            else:
+                s_comp2 = np.eye(2, dtype=complex)
+                
+            # Cascade waveguide and component
+            s_total = self._cascade_two_port_s_params(s_total, s_waveguide)
+            s_total = self._cascade_two_port_s_params(s_total, s_comp2)
+            
+        # Extract desired transfer function
+        if (input_port < s_total.shape[1] and output_port < s_total.shape[0]):
+            return s_total[output_port, input_port]
+        else:
+            return 0.0
+            
+    def _get_waveguide_s_params(self, edge_data: dict, freq_idx: int) -> np.ndarray:
+        """Generate S-parameters for waveguide connection."""
+        loss = edge_data.get('loss', 1.0)
+        phase = edge_data.get('phase', 0.0)
+        
+        # Ideal waveguide S-parameters
+        s_waveguide = np.array([[0, loss * np.exp(1j * phase)],
+                               [loss * np.exp(1j * phase), 0]], dtype=complex)
+        return s_waveguide
+        
+    def _cascade_two_port_s_params(self, s1: np.ndarray, s2: np.ndarray) -> np.ndarray:
+        """Cascade two 2x2 S-parameter matrices."""
+        # Standard S-parameter cascading formulas
+        try:
+            denominator = 1 - s1[1, 0] * s2[0, 1]
+            
+            if abs(denominator) < 1e-12:  # Avoid division by zero
+                return s2  # Fallback
+                
+            s11 = s1[0, 0] + (s1[0, 1] * s2[0, 0] * s1[1, 0]) / denominator
+            s12 = (s1[0, 1] * s2[0, 1]) / denominator
+            s21 = (s2[1, 0] * s1[1, 1]) / denominator
+            s22 = s2[1, 1] + (s2[1, 0] * s1[1, 1] * s2[0, 1]) / denominator
+            
+            return np.array([[s11, s12], [s21, s22]], dtype=complex)
+            
+        except Exception as e:
+            print(f"Warning: S-parameter cascading failed: {e}")
+            return s2  # Fallback to second matrix
             
     def calculate_group_delay(self, input_component: str, input_port: int,
                             output_component: str, output_port: int) -> np.ndarray:

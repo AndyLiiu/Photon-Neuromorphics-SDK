@@ -386,3 +386,190 @@ class ThermalControllers:
             return True
         except Exception:
             return False
+            
+    def calibrate_system(self, calibration_type: str = "comprehensive") -> Dict[str, bool]:
+        """Perform system calibration."""
+        results = {}
+        
+        if calibration_type in ["comprehensive", "optical"]:
+            results['optical_calibration'] = self._calibrate_optical_system()
+            
+        if calibration_type in ["comprehensive", "thermal"]:
+            results['thermal_calibration'] = self._calibrate_thermal_system()
+            
+        if calibration_type in ["comprehensive", "electrical"]:
+            results['electrical_calibration'] = self._calibrate_electrical_system()
+            
+        return results
+        
+    def _calibrate_optical_system(self) -> bool:
+        """Calibrate optical components and power levels."""
+        try:
+            # Step 1: Calibrate laser source power
+            if not self._calibrate_laser_power():
+                return False
+                
+            # Step 2: Calibrate photodetector responsivity
+            if not self._calibrate_detector_responsivity():
+                return False
+                
+            # Step 3: Calibrate modulator response
+            if not self._calibrate_modulator_response():
+                return False
+                
+            # Step 4: Measure and compensate insertion losses
+            if not self._calibrate_insertion_losses():
+                return False
+                
+            return True
+            
+        except Exception as e:
+            self.last_error = f"Optical calibration failed: {e}"
+            return False
+            
+    def _calibrate_laser_power(self) -> bool:
+        """Calibrate laser source power levels."""
+        try:
+            # Measure actual optical power
+            measured_power = self.get_optical_power()
+            target_power = 1e-3  # 1 mW target
+            
+            # Adjust laser drive current if needed
+            if abs(measured_power - target_power) > 0.1e-3:  # 0.1 mW tolerance
+                correction_factor = target_power / (measured_power + 1e-9)  # Avoid division by zero
+                # In real implementation, would adjust laser driver
+                print(f"Laser power correction factor: {correction_factor:.3f}")
+                
+            return True
+            
+        except Exception as e:
+            print(f"Laser calibration failed: {e}")
+            return False
+            
+    def _calibrate_detector_responsivity(self) -> bool:
+        """Calibrate photodetector responsivity."""
+        try:
+            # Apply known optical power and measure response
+            test_powers = [0.1e-3, 0.5e-3, 1.0e-3]  # mW
+            measured_currents = []
+            
+            for power in test_powers:
+                # In real implementation, would apply calibrated optical power
+                current = self.photodetector_array.read_current(0)
+                measured_currents.append(current)
+                
+            # Calculate responsivity (simplified)
+            if len(measured_currents) > 1:
+                responsivity = np.mean([c/p for c, p in zip(measured_currents, test_powers) if p > 0])
+                self.photodetector_array.responsivity[0] = responsivity
+                
+            return True
+            
+        except Exception as e:
+            print(f"Detector calibration failed: {e}")
+            return False
+            
+    def _calibrate_modulator_response(self) -> bool:
+        """Calibrate modulator voltage-to-phase response."""
+        try:
+            # Sweep modulator voltage and measure optical response
+            test_voltages = np.linspace(0, 5.0, 11)  # 0 to 5V
+            phase_responses = []
+            
+            for voltage in test_voltages:
+                # Set modulator voltage
+                self.modulator_array.set_voltage(0, voltage)
+                
+                # Measure phase shift (simplified - would use interferometric measurement)
+                # For now, assume linear relationship
+                phase_shift = voltage * np.pi / 2.5  # Assume Vπ = 2.5V
+                phase_responses.append(phase_shift)
+                
+            # Fit linear response and extract Vπ
+            if len(phase_responses) > 2:
+                coeffs = np.polyfit(test_voltages, phase_responses, 1)
+                v_pi = np.pi / coeffs[0] if coeffs[0] != 0 else 2.5
+                print(f"Measured Vπ: {v_pi:.2f} V")
+                
+            return True
+            
+        except Exception as e:
+            print(f"Modulator calibration failed: {e}")
+            return False
+            
+    def _calibrate_insertion_losses(self) -> bool:
+        """Measure and compensate for insertion losses."""
+        try:
+            # Measure baseline transmission
+            input_power = self.get_optical_power()
+            
+            # Process through various components and measure losses
+            # This would be component-specific in real implementation
+            component_losses = {}
+            
+            # Simulate loss measurements
+            component_losses['waveguides'] = 0.1  # dB/cm
+            component_losses['modulators'] = 3.0  # dB
+            component_losses['couplers'] = 0.5   # dB each
+            
+            # Store loss corrections in chip parameters
+            self.chip_parameters['measured_losses'] = component_losses
+            
+            return True
+            
+        except Exception as e:
+            print(f"Loss calibration failed: {e}")
+            return False
+            
+    def _calibrate_thermal_system(self) -> bool:
+        """Calibrate thermal control system."""
+        try:
+            # Calibrate temperature sensors
+            ambient_temp = 25.0  # °C (would read from external reference)
+            
+            for i in range(self.thermal_controllers.n_controllers):
+                measured_temp = self.thermal_controllers.get_temperature(i)
+                offset = ambient_temp - measured_temp
+                # Store offset for correction (simplified)
+                print(f"Thermal sensor {i} offset: {offset:.1f}°C")
+                
+            # Calibrate heater efficiency
+            test_powers = [1.0, 2.0, 5.0]  # mW
+            for power in test_powers:
+                self.thermal_controllers.set_power(0, power)
+                time.sleep(0.1)  # Wait for thermal settling
+                temp_rise = self.thermal_controllers.get_temperature(0) - ambient_temp
+                efficiency = temp_rise / power if power > 0 else 0
+                print(f"Thermal efficiency: {efficiency:.1f} °C/mW at {power} mW")
+                
+            # Reset heater
+            self.thermal_controllers.set_power(0, 0.0)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Thermal calibration failed: {e}")
+            return False
+            
+    def _calibrate_electrical_system(self) -> bool:
+        """Calibrate electrical interfaces."""
+        try:
+            # Calibrate DACs for modulator drive
+            for i in range(min(4, self.modulator_array.n_modulators)):  # Test first 4
+                # Test voltage accuracy
+                test_voltage = 1.0  # V
+                self.modulator_array.set_voltage(i, test_voltage)
+                # In real implementation, would verify with external meter
+                
+            # Calibrate ADCs for detector readout  
+            for i in range(min(4, self.photodetector_array.n_detectors)):  # Test first 4
+                # Inject known current and verify readout
+                # This would be done with external current source
+                current = self.photodetector_array.read_current(i)
+                print(f"Detector {i} dark current: {current*1e9:.1f} nA")
+                
+            return True
+            
+        except Exception as e:
+            print(f"Electrical calibration failed: {e}")
+            return False

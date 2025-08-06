@@ -20,8 +20,12 @@ class ONNXParser:
         self.backend = backend
         self.wavelength = wavelength
         self.supported_ops = {
-            'MatMul', 'Gemm', 'Add', 'Relu', 'Sigmoid', 'Tanh',
-            'Conv', 'MaxPool', 'AvgPool', 'Reshape', 'Transpose'
+            'MatMul', 'Gemm', 'Add', 'Sub', 'Mul', 'Div',
+            'Relu', 'Sigmoid', 'Tanh', 'Softmax', 'LogSoftmax',
+            'Conv', 'MaxPool', 'AvgPool', 'GlobalAveragePool',
+            'Reshape', 'Transpose', 'Flatten', 'Concat', 'Split',
+            'BatchNormalization', 'LayerNormalization',
+            'Dropout', 'Identity'
         }
         self.layer_mapping = {}
         
@@ -142,6 +146,91 @@ class ONNXParser:
                     shape.append(-1)
             return shape
         return []
+        
+    def get_photonic_mapping(self, op_type: str) -> Dict[str, Any]:
+        """Get photonic implementation mapping for ONNX operator."""
+        mappings = {
+            # Linear operations - map to MZI meshes
+            'MatMul': {'type': 'mzi_mesh', 'supports_complex': True},
+            'Gemm': {'type': 'mzi_mesh', 'supports_complex': True, 'has_bias': True},
+            
+            # Element-wise operations - map to nonlinear elements
+            'Add': {'type': 'optical_combiner', 'operation': 'add'},
+            'Sub': {'type': 'optical_combiner', 'operation': 'subtract'},
+            'Mul': {'type': 'optical_mixer', 'operation': 'multiply'},
+            'Div': {'type': 'optical_mixer', 'operation': 'divide'},
+            
+            # Activation functions - map to nonlinear optical elements
+            'Relu': {'type': 'saturable_absorber', 'activation': 'relu'},
+            'Sigmoid': {'type': 'saturable_absorber', 'activation': 'sigmoid'},
+            'Tanh': {'type': 'saturable_absorber', 'activation': 'tanh'},
+            'Softmax': {'type': 'optical_softmax', 'normalization': 'l1'},
+            
+            # Convolution - map to optical convolution (wavelength-division multiplexing)
+            'Conv': {'type': 'optical_conv', 'implementation': 'wdm_based'},
+            
+            # Pooling operations - map to optical averaging/selection
+            'MaxPool': {'type': 'optical_pooling', 'operation': 'max'},
+            'AvgPool': {'type': 'optical_pooling', 'operation': 'average'},
+            'GlobalAveragePool': {'type': 'optical_pooling', 'operation': 'global_average'},
+            
+            # Structural operations
+            'Reshape': {'type': 'optical_router', 'operation': 'reshape'},
+            'Transpose': {'type': 'optical_router', 'operation': 'transpose'},
+            'Flatten': {'type': 'optical_router', 'operation': 'flatten'},
+            'Concat': {'type': 'optical_combiner', 'operation': 'concat'},
+            'Split': {'type': 'optical_splitter', 'operation': 'split'},
+            
+            # Normalization - map to optical normalization circuits
+            'BatchNormalization': {'type': 'optical_normalizer', 'method': 'batch'},
+            'LayerNormalization': {'type': 'optical_normalizer', 'method': 'layer'},
+            
+            # Regularization
+            'Dropout': {'type': 'variable_attenuator', 'operation': 'dropout'},
+            'Identity': {'type': 'waveguide', 'operation': 'passthrough'},
+        }
+        
+        return mappings.get(op_type, {'type': 'unsupported', 'operation': 'unknown'})
+        
+    def estimate_photonic_complexity(self, layers: List[Dict[str, Any]]) -> Dict[str, int]:
+        """Estimate photonic circuit complexity."""
+        complexity = {
+            'mzi_count': 0,
+            'phase_shifters': 0,
+            'nonlinear_elements': 0,
+            'detectors': 0,
+            'modulators': 0,
+            'total_area_mm2': 0.0
+        }
+        
+        for layer in layers:
+            op_type = layer['op_type']
+            mapping = self.get_photonic_mapping(op_type)
+            
+            if mapping['type'] == 'mzi_mesh':
+                # Estimate MZI count from weight matrix size
+                weights = layer.get('weights', {})
+                for weight_array in weights.values():
+                    if len(weight_array.shape) == 2:
+                        rows, cols = weight_array.shape
+                        # Each MZI can implement a 2x2 unitary
+                        complexity['mzi_count'] += (rows * cols) // 4
+                        complexity['phase_shifters'] += rows * cols * 2  # 2 phases per MZI
+                        
+            elif mapping['type'] in ['saturable_absorber', 'optical_softmax']:
+                complexity['nonlinear_elements'] += 1
+                
+            elif mapping['type'] in ['optical_combiner', 'optical_mixer']:
+                complexity['modulators'] += 2  # Input modulators
+                
+        # Estimate physical area (very rough)
+        complexity['total_area_mm2'] = (
+            complexity['mzi_count'] * 0.01 +  # 10 µm² per MZI
+            complexity['phase_shifters'] * 0.001 +  # 1 µm² per phase shifter
+            complexity['nonlinear_elements'] * 0.1  # 100 µm² per nonlinear element
+        )
+        
+        return complexity
 
 
 def compile_to_photonic(model: Union[nn.Module, str], backend: str = "mach_zehnder",

@@ -29,6 +29,13 @@ def get_version():
     """Get the version string."""
     return __version__
 
+# Import WebAssembly acceleration
+from .wasm import (
+    PhotonicWASM, initialize_wasm, mzi_forward_pass_simd, microring_simulation_simd,
+    optical_matmul_simd, phase_accumulation_simd, complex_multiply_simd,
+    waveguide_propagation_simd, JSPhotonNeuro, export_wasm_module
+)
+
 # Import robust features
 from .core.exceptions import (
     PhotonicError, SimulationError, ComponentError, HardwareError,
@@ -101,6 +108,11 @@ __all__ = [
     # Version
     "get_version",
     "__version__",
+    
+    # WebAssembly Acceleration
+    "PhotonicWASM", "initialize_wasm", "mzi_forward_pass_simd", "microring_simulation_simd",
+    "optical_matmul_simd", "phase_accumulation_simd", "complex_multiply_simd", 
+    "waveguide_propagation_simd", "JSPhotonNeuro", "export_wasm_module",
     
     # Robust Features - Error Handling
     "PhotonicError", "SimulationError", "ComponentError", "HardwareError",

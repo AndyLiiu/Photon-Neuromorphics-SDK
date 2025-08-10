@@ -117,8 +117,14 @@ class QuantumPhotonic(PhotonicComponent):
         elif len(qubits) == 2:
             # Two-qubit gate  
             self._apply_two_qubit_gate(gate, qubits[0], qubits[1])
+        elif len(qubits) == 3:
+            # Three-qubit gate (e.g., Toffoli, Fredkin)
+            self._apply_three_qubit_gate(gate, qubits[0], qubits[1], qubits[2])
+        elif len(qubits) > 3:
+            # Multi-qubit gate using tensor product decomposition
+            self._apply_multi_qubit_gate(gate, qubits)
         else:
-            raise NotImplementedError("Only 1 and 2 qubit gates supported")
+            raise NotImplementedError(f"Gates with {len(qubits)} qubits not supported")
             
     def _apply_single_qubit_gate(self, gate: torch.Tensor, qubit: int):
         """Apply single-qubit gate."""
@@ -187,6 +193,117 @@ class QuantumPhotonic(PhotonicComponent):
             counts[binary_string] = counts.get(binary_string, 0) + 1
             
         return counts
+    
+    def _apply_three_qubit_gate(self, gate: torch.Tensor, q1: int, q2: int, q3: int):
+        """Apply three-qubit gate (Toffoli, Fredkin, etc.)."""
+        new_state = torch.zeros_like(self.quantum_state)
+        
+        for i in range(self.n_basis_states):
+            # Extract bits for target qubits
+            bit1 = (i >> q1) & 1
+            bit2 = (i >> q2) & 1
+            bit3 = (i >> q3) & 1
+            
+            # Create 3-bit index for gate matrix
+            gate_in_idx = (bit1 << 2) | (bit2 << 1) | bit3
+            
+            for gate_out_idx in range(8):  # 2^3 = 8 possible outputs
+                amplitude = gate[gate_out_idx, gate_in_idx]
+                if amplitude != 0:
+                    # Extract output bits
+                    out_bit1 = (gate_out_idx >> 2) & 1
+                    out_bit2 = (gate_out_idx >> 1) & 1  
+                    out_bit3 = gate_out_idx & 1
+                    
+                    # Construct new state index
+                    j = i
+                    if out_bit1 != bit1:
+                        j ^= (1 << q1)
+                    if out_bit2 != bit2:
+                        j ^= (1 << q2)
+                    if out_bit3 != bit3:
+                        j ^= (1 << q3)
+                        
+                    new_state[j] += amplitude * self.quantum_state[i]
+        
+        self.quantum_state = new_state
+    
+    def _apply_multi_qubit_gate(self, gate: torch.Tensor, qubits: List[int]):
+        """Apply multi-qubit gate using tensor decomposition."""
+        n_gate_qubits = len(qubits)
+        gate_size = 2**n_gate_qubits
+        
+        new_state = torch.zeros_like(self.quantum_state)
+        
+        for i in range(self.n_basis_states):
+            # Extract bits for target qubits
+            in_bits = []
+            for q in qubits:
+                in_bits.append((i >> q) & 1)
+            
+            # Convert to gate input index
+            gate_in_idx = sum(bit << (n_gate_qubits - 1 - j) for j, bit in enumerate(in_bits))
+            
+            for gate_out_idx in range(gate_size):
+                amplitude = gate[gate_out_idx, gate_in_idx] 
+                if amplitude != 0:
+                    # Extract output bits
+                    out_bits = []
+                    for j in range(n_gate_qubits):
+                        out_bits.append((gate_out_idx >> (n_gate_qubits - 1 - j)) & 1)
+                    
+                    # Construct new state index
+                    j = i
+                    for q_idx, q in enumerate(qubits):
+                        if out_bits[q_idx] != in_bits[q_idx]:
+                            j ^= (1 << q)
+                    
+                    new_state[j] += amplitude * self.quantum_state[i]
+        
+        self.quantum_state = new_state
+
+    def toffoli_gate(self, control1: int, control2: int, target: int):
+        """Apply Toffoli (CCNOT) gate."""
+        toffoli = torch.eye(8, dtype=torch.complex64)
+        # Flip target if both controls are 1 (state |111⟩ -> |110⟩)
+        toffoli[6, 6] = 0  # |110⟩
+        toffoli[6, 7] = 1  # |111⟩
+        toffoli[7, 6] = 1  # |110⟩  
+        toffoli[7, 7] = 0  # |111⟩
+        
+        self._apply_three_qubit_gate(toffoli, control1, control2, target)
+
+    def fredkin_gate(self, control: int, swap1: int, swap2: int):
+        """Apply Fredkin (controlled-SWAP) gate."""
+        fredkin = torch.eye(8, dtype=torch.complex64)
+        # Swap if control is 1 (|101⟩ <-> |110⟩)
+        fredkin[5, 5] = 0  # |101⟩
+        fredkin[5, 6] = 1  # |110⟩
+        fredkin[6, 5] = 1  # |101⟩
+        fredkin[6, 6] = 0  # |110⟩
+        
+        self._apply_three_qubit_gate(fredkin, control, swap1, swap2)
+    
+    def quantum_fourier_transform(self, qubits: List[int]):
+        """Apply Quantum Fourier Transform to specified qubits."""
+        n = len(qubits)
+        
+        for j in range(n):
+            # Hadamard gate
+            h_gate = torch.tensor([[1, 1], [1, -1]], dtype=torch.complex64) / torch.sqrt(torch.tensor(2.0))
+            self.apply_gate(h_gate, [qubits[j]])
+            
+            # Controlled phase rotations
+            for k in range(j + 1, n):
+                phase = torch.exp(1j * torch.pi / (2**(k - j)))
+                cphase = torch.eye(4, dtype=torch.complex64)
+                cphase[3, 3] = phase  # |11⟩ state
+                self.apply_gate(cphase, [qubits[j], qubits[k]])
+        
+        # Reverse qubit order
+        for i in range(n // 2):
+            swap = torch.tensor([[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=torch.complex64)
+            self.apply_gate(swap, [qubits[i], qubits[n - 1 - i]])
         
     def forward(self, classical_input: torch.Tensor) -> torch.Tensor:
         """Interface classical input to quantum circuit."""

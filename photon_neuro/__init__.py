@@ -6,7 +6,7 @@ Silicon-photonic spiking neural network library with WebAssembly SIMD accelerati
 and real-time optical training capabilities.
 """
 
-__version__ = "0.2.0-robust"
+__version__ = "0.4.0-revolutionary"
 __author__ = "Daniel Schmidt"
 __email__ = "daniel@photon-neuro.io"
 
@@ -22,8 +22,8 @@ from .utils import matrix_fidelity, random_unitary
 # Component registration decorator
 from .core.registry import register_component
 
-# Version info - Generation 2 "Make It Robust"
-VERSION_INFO = (0, 2, 0, "robust")
+# Version info - Generation 4 "Make It Revolutionary" 
+VERSION_INFO = (0, 4, 0, "revolutionary")
 
 def get_version():
     """Get the version string."""
@@ -68,6 +68,28 @@ from .hardware.calibration import (
 from .utils.logging_system import (
     PhotonLogger, MetricsCollector, ProgressTracker, DiagnosticMode,
     global_logger, log_execution_time, monitor_memory_usage, track_progress
+)
+
+# Generation 4 Revolutionary Features - Quantum Computing
+from .quantum import (
+    SurfaceCode, StabilizerCode, QuantumErrorCorrector,
+    LogicalQubitEncoder, SyndromeDecoder, ErrorRecovery
+)
+
+# Generation 4 Revolutionary Features - Advanced AI
+from .ai import (
+    OpticalTransformer, PhotonicSelfAttention, OpticalMultiHeadAttention,
+    OpticalPositionalEncoding, OpticalFeedForward, PhotonicGPT,
+    InterferenceSelfAttention, MZIAttentionMesh, PhotonicNAS,
+    ArchitectureSearchSpace, PhotonicArchitectureEvaluator,
+    OpticalArchitectureOptimizer, EvolutionaryPhotonicNAS
+)
+
+# Generation 4 Revolutionary Features - Distributed Learning
+from .distributed import (
+    FederatedPhotonicTrainer, PhotonicFederatedClient, PhotonicFederatedServer,
+    PhotonicAggregationStrategy, OptoelectronicSecureAggregation,
+    DistributedPhotonicsManager
 )
 
 __all__ = [
@@ -139,4 +161,20 @@ __all__ = [
     # Robust Features - Logging & Monitoring
     "PhotonLogger", "MetricsCollector", "ProgressTracker", "DiagnosticMode",
     "global_logger", "log_execution_time", "monitor_memory_usage", "track_progress",
+    
+    # Generation 4 Revolutionary Features - Quantum Computing
+    "SurfaceCode", "StabilizerCode", "QuantumErrorCorrector",
+    "LogicalQubitEncoder", "SyndromeDecoder", "ErrorRecovery",
+    
+    # Generation 4 Revolutionary Features - Advanced AI
+    "OpticalTransformer", "PhotonicSelfAttention", "OpticalMultiHeadAttention",
+    "OpticalPositionalEncoding", "OpticalFeedForward", "PhotonicGPT",
+    "InterferenceSelfAttention", "MZIAttentionMesh", "PhotonicNAS",
+    "ArchitectureSearchSpace", "PhotonicArchitectureEvaluator", 
+    "OpticalArchitectureOptimizer", "EvolutionaryPhotonicNAS",
+    
+    # Generation 4 Revolutionary Features - Distributed Learning
+    "FederatedPhotonicTrainer", "PhotonicFederatedClient", "PhotonicFederatedServer",
+    "PhotonicAggregationStrategy", "OptoelectronicSecureAggregation",
+    "DistributedPhotonicsManager"
 ]

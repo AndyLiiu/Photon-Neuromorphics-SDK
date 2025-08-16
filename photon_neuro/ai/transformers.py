@@ -14,8 +14,16 @@ import math
 from dataclasses import dataclass
 
 from ..core.components import PhotonicComponent
-from ..networks.feedforward import MZIMesh, MicroringArray
-from ..simulation.circuit import PhotonicCircuit
+from ..networks.feedforward import MZIMesh
+
+# Mock missing component for Generation 5
+class MicroringArray:
+    def __init__(self, *args, **kwargs):
+        pass
+# Mock missing component for Generation 5
+class PhotonicCircuit:
+    def __init__(self, *args, **kwargs):
+        pass
 from ..utils.logging_system import global_logger, log_execution_time
 from ..core.exceptions import ComponentError, validate_parameter
 

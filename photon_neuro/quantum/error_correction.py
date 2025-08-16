@@ -12,7 +12,10 @@ from typing import List, Dict, Tuple, Optional, Union
 from dataclasses import dataclass
 import logging
 
-from ..core.exceptions import QuantumError, validate_parameter
+from ..core.exceptions import PhotonicError, validate_parameter
+
+# Alias for compatibility
+QuantumError = PhotonicError
 from ..utils.logging_system import global_logger, log_execution_time
 
 

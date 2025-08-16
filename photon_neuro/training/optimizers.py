@@ -4,7 +4,7 @@ Optimizers for photonic neural networks.
 
 import torch
 import torch.optim as optim
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any, Callable, Tuple
 import numpy as np
 
 

@@ -6,7 +6,7 @@ Silicon-photonic spiking neural network library with WebAssembly SIMD accelerati
 and real-time optical training capabilities.
 """
 
-__version__ = "0.4.0-revolutionary"
+__version__ = "0.6.0-transcendent"
 __author__ = "Daniel Schmidt"
 __email__ = "daniel@photon-neuro.io"
 
@@ -22,8 +22,8 @@ from .utils import matrix_fidelity, random_unitary
 # Component registration decorator
 from .core.registry import register_component
 
-# Version info - Generation 4 "Make It Revolutionary" 
-VERSION_INFO = (0, 4, 0, "revolutionary")
+# Version info - Generation 6 "Transcendent" 
+VERSION_INFO = (0, 6, 0, "transcendent")
 
 def get_version():
     """Get the version string."""
@@ -90,6 +90,18 @@ from .distributed import (
     FederatedPhotonicTrainer, PhotonicFederatedClient, PhotonicFederatedServer,
     PhotonicAggregationStrategy, OptoelectronicSecureAggregation,
     DistributedPhotonicsManager
+)
+
+# Generation 6 Transcendent Features - Unified Quantum Core
+from .core.unified_quantum_core import (
+    TranscendentQuantumCore, UnifiedQuantumState, QuantumReality,
+    PhotonicQuantumBridge, TranscendentOperator, create_transcendent_core
+)
+
+# Generation 6 Transcendent Features - Quantum Datacenter Architecture  
+from .quantum.quantum_datacenter_architecture import (
+    QuantumDatacenterOrchestrator, QuantumComputeNode, QuantumWorkload,
+    create_quantum_datacenter, DatacenterQuantumState
 )
 
 __all__ = [
@@ -176,5 +188,13 @@ __all__ = [
     # Generation 4 Revolutionary Features - Distributed Learning
     "FederatedPhotonicTrainer", "PhotonicFederatedClient", "PhotonicFederatedServer",
     "PhotonicAggregationStrategy", "OptoelectronicSecureAggregation",
-    "DistributedPhotonicsManager"
+    "DistributedPhotonicsManager",
+    
+    # Generation 6 Transcendent Features - Unified Quantum Core
+    "TranscendentQuantumCore", "UnifiedQuantumState", "QuantumReality",
+    "PhotonicQuantumBridge", "TranscendentOperator", "create_transcendent_core",
+    
+    # Generation 6 Transcendent Features - Quantum Datacenter Architecture
+    "QuantumDatacenterOrchestrator", "QuantumComputeNode", "QuantumWorkload",
+    "create_quantum_datacenter", "DatacenterQuantumState"
 ]

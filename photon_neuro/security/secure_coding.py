@@ -8,7 +8,7 @@ Utilities for secure coding practices.
 import hashlib
 import secrets
 import base64
-from typing import bytes, str, Optional
+from typing import Optional
 
 def secure_hash(data: str, algorithm: str = "sha256") -> str:
     """Generate secure hash of data."""

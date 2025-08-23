@@ -6,7 +6,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 from typing import List, Tuple, Optional
-from ..core import PhotonicComponent, MicroringModulator
+from ..core import PhotonicComponent
+from ..core.modulators import MicroringModulator
 from ..core.registry import register_component
 
 

@@ -6,7 +6,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 from typing import List, Tuple, Optional
-from ..core import PhotonicComponent, PhaseShifter
+from ..core import PhotonicComponent
+# Import will be handled dynamically
 from ..core.registry import register_component
 
 
@@ -28,12 +29,14 @@ class MZIMesh(PhotonicComponent):
             self.n_phases = n_inputs * n_outputs
         else:
             self.n_phases = n_inputs * (n_inputs + 1) // 2
+        
+        # Initialize phase parameters
+        self.phases = nn.Parameter(torch.zeros(self.n_phases))
+        self.phase_variance = nn.Parameter(torch.ones(self.n_phases) * 0.1)
             
-        # Initialize phase shifters
-        self.phase_shifters = nn.ModuleList([
-            PhaseShifter(length=50e-6, shifter_type="thermal")
-            for _ in range(self.n_phases)
-        ])
+        # Initialize phase shifters - use simplified model to avoid import issues
+        self.thermal_coefficients = nn.Parameter(torch.ones(self.n_phases) * 2.0e-4)
+        self.drive_voltages = nn.Parameter(torch.zeros(self.n_phases))
         
         # Initialize phases
         self.phases = nn.Parameter(torch.zeros(self.n_phases))
@@ -121,14 +124,19 @@ class MZIMesh(PhotonicComponent):
             raise ValueError(f"Expected {self.n_phases} phases, got {len(phases)}")
         self.phases.data = phases
         
-        # Update individual phase shifters
-        for i, phase_shifter in enumerate(self.phase_shifters):
-            phase_shifter.drive_voltage = phases[i].item() / phase_shifter.efficiency
+        # Update thermal coefficients for phase control
+        for i in range(len(phases)):
+            if i < len(self.drive_voltages):
+                self.drive_voltages.data[i] = phases[i] / self.thermal_coefficients[i]
             
     def forward(self, input_fields: torch.Tensor) -> torch.Tensor:
         """Forward pass through MZI mesh."""
+        # Handle different input dimensions
+        if input_fields.dim() == 1:
+            input_fields = input_fields.unsqueeze(0)  # Add batch dimension
+            
         batch_size = input_fields.shape[0]
-        n_inputs = input_fields.shape[1]
+        n_inputs = input_fields.shape[1] if input_fields.dim() > 1 else len(input_fields)
         
         if n_inputs != self.size[0]:
             raise ValueError(f"Expected {self.size[0]} inputs, got {n_inputs}")

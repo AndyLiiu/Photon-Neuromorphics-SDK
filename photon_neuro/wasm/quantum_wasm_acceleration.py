@@ -657,7 +657,7 @@ class PhotonQuantumWASM {{
             executionTime: executionTime,
             nQubits: circuit.n_qubits,
             memoryUsage: this.getMemoryUsage()
-        }};
+        }}
     }}
     
     /**
